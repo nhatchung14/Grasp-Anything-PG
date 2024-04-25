@@ -110,6 +110,5 @@ saved_data/
 
 *.pyc
 
-data/*
 logs/
 trained-models/grasp_det_seg
