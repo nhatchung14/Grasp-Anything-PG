@@ -22,5 +22,11 @@ def get_network(network_name):
     elif network_name == 'ggcnn':
         from .ggcnn import GGCNN
         return GGCNN
+    elif network_name == 'dino-grconvnet':
+        from .dino_grconvnet import DINO_GenerativeConvNet
+        return DINO_GenerativeConvNet
+    elif network_name == 'dino-grconvnet2':
+        from .dino_grconvnet2 import DINO_GenerativeConvNet
+        return DINO_GenerativeConvNet
     else:
         raise NotImplementedError('Network {} is not implemented'.format(network_name))

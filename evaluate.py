@@ -5,11 +5,12 @@ import time
 import numpy as np
 import torch.utils.data
 
-from hardware.device import get_device
+# from hardware.device import get_device
 from inference.post_process import post_process_output
 from utils.data import get_dataset
 from utils.dataset_processing import evaluation, grasp
 from utils.visualisation.plot import save_results
+from inference.models.dino_grconvnet import DINO_GenerativeConvNet
 
 logging.basicConfig(level=logging.INFO)
 
@@ -77,7 +78,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # Get the compute device
-    device = get_device(args.force_cpu)
+    device = 'cuda'
 
     # Load Dataset
     logging.info('Loading {} Dataset...'.format(args.dataset.title()))
@@ -124,16 +125,19 @@ if __name__ == '__main__':
         start_time = time.time()
 
         with torch.no_grad():
-            for idx, (x, y, didx, rot, zoom) in enumerate(test_data):
+            for idx, (x, y, didx, rot, zoom, prompt) in enumerate(test_data):
                 xc = x.to(device)
                 yc = [yi.to(device) for yi in y]
-                lossd = net.compute_loss(xc, yc)
+                if isinstance(net, DINO_GenerativeConvNet):
+                    lossd = net.compute_loss(xc, yc, prompt)
+                else:
+                    lossd = net.compute_loss(xc, yc)
 
                 q_img, ang_img, width_img = post_process_output(lossd['pred']['pos'], lossd['pred']['cos'],
                                                                 lossd['pred']['sin'], lossd['pred']['width'])
 
                 if args.iou_eval:
-                    s = evaluation.calculate_iou_match(q_img, ang_img, test_data.dataset.get_gtbb(didx, rot, zoom),
+                    s = evaluation.calculate_iou_match(q_img, ang_img, test_data.dataset.get_gtbb(didx, rot.item(), zoom.item()),
                                                        no_grasps=args.n_grasps,
                                                        grasp_width=width_img,
                                                        threshold=args.iou_threshold

@@ -13,12 +13,16 @@ import torch.optim as optim
 import torch.utils.data
 from torchsummary import summary
 
-from hardware.device import get_device
+# from hardware.device import get_device
 from inference.models import get_network
+from inference.models.dino_grconvnet import DINO_GenerativeConvNet as DINO_GenerativeConvNet1
+from inference.models.dino_grconvnet2 import DINO_GenerativeConvNet as DINO_GenerativeConvNet2
 from inference.post_process import post_process_output
 from utils.data import get_dataset
 from utils.dataset_processing import evaluation
 from utils.visualisation.gridshow import gridshow
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def parse_args():
@@ -41,6 +45,8 @@ def parse_args():
                         help='Internal channel size for the network')
     parser.add_argument('--iou-threshold', type=float, default=0.25,
                         help='Threshold for IOU matching')
+    parser.add_argument('--is-aligned', type=int, default=0,
+                        help='Whether to perform alignment of text & seg map')
 
     # Datasets
     parser.add_argument('--dataset', type=str,
@@ -107,11 +113,13 @@ def validate(net, device, val_data, iou_threshold):
     ld = len(val_data)
 
     with torch.no_grad():
-        for x, y, didx, rot, zoom_factor in val_data:
+        for x, y, didx, rot, zoom_factor, prompt in val_data:
             xc = x.to(device)
             yc = [yy.to(device) for yy in y]
-            lossd = net.compute_loss(xc, yc)
-
+            if isinstance(net, DINO_GenerativeConvNet1) or isinstance(net, DINO_GenerativeConvNet2):
+                lossd = net.compute_loss(xc, yc, prompt)
+            else:
+                lossd = net.compute_loss(xc, yc)
             loss = lossd['loss']
 
             results['loss'] += loss.item() / ld
@@ -125,7 +133,7 @@ def validate(net, device, val_data, iou_threshold):
 
             s = evaluation.calculate_iou_match(q_out,
                                                ang_out,
-                                               val_data.dataset.get_gtbb(didx, rot, zoom_factor),
+                                               val_data.dataset.get_gtbb(didx, rot.item(), zoom_factor.item()),
                                                no_grasps=1,
                                                grasp_width=w_out,
                                                threshold=iou_threshold
@@ -162,14 +170,17 @@ def train(epoch, net, device, train_data, optimizer, batches_per_epoch, vis=Fals
     batch_idx = 0
     # Use batches per epoch to make training on different sized datasets (cornell/jacquard) more equivalent.
     while batch_idx <= batches_per_epoch:
-        for x, y, _, _, _ in train_data:
+        for x, y, _, _, _, prompt in train_data:
             batch_idx += 1
             if batch_idx >= batches_per_epoch:
                 break
 
             xc = x.to(device)
             yc = [yy.to(device) for yy in y]
-            lossd = net.compute_loss(xc, yc)
+            if isinstance(net, DINO_GenerativeConvNet1) or isinstance(net, DINO_GenerativeConvNet2):
+                lossd = net.compute_loss(xc, yc, prompt)
+            else:
+                lossd = net.compute_loss(xc, yc)
 
             loss = lossd['loss']
 
@@ -243,7 +254,7 @@ def run():
     logging.getLogger('').addHandler(console)
 
     # Get the compute device
-    device = get_device(args.force_cpu)
+    device = 'cuda' # get_device(args.force_cpu)
 
     # Load Dataset
     logging.info('Loading {} Dataset...'.format(args.dataset.title()))
@@ -294,14 +305,14 @@ def run():
         input_channels=input_channels,
         dropout=args.use_dropout,
         prob=args.dropout_prob,
-        channel_size=args.channel_size
+        channel_size=args.channel_size,
+        is_aligned=args.is_aligned
     )
-
     net = net.to(device)
     logging.info('Done')
 
     if args.optim.lower() == 'adam':
-        optimizer = optim.Adam(net.parameters())
+        optimizer = optim.Adam(net.parameters(), lr=0.001)
     elif args.optim.lower() == 'sgd':
         optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
     else:

@@ -1,0 +1,9 @@
+# single-modal
+python train_network.py --dataset "grasp-anything++" --dataset-path "data/grasp-anything++/seen" --description "training_gapp" --use-depth 0
+
+## no mask
+python evaluate.py --network "logs/240427_0212_training_gapp/epoch_41_iou_0.46" --dataset "grasp-anything++" --dataset-path "data/grasp-anything++/unseen" --use-depth 0 --iou-eval
+
+## with mask
+python evaluate.py --network "logs/240427_0247_training_gapp/epoch_49_iou_0.57" --dataset "grasp-anything++" --dataset-path "data/grasp-anything++/unseen" --use-depth 0 --iou-eval
+
